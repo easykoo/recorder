@@ -19,8 +19,8 @@ func main() {
 	r := recorder.NewRecord(DataProc)
 	r.OpenDevice()
 	defer r.CloseDevice()
-	go handle(r)
 	r.StartRecord()
+	handle(r)
 }
 
 func handle(r *recorder.Record) {
@@ -28,13 +28,15 @@ func handle(r *recorder.Record) {
 		select {
 		case d := <-block:
 			pcm = append(pcm, d...)
-			if len(pcm) > 1024*500 { //200k
+			if len(pcm) > 1024*200 { //200k
 				writePCM(pcm)
 				r.StopRecord()
+				goto OUT
 			}
-		default:
 		}
 	}
+OUT:
+	fmt.Println("handle end")
 }
 
 func writePCM(pcm []byte) {

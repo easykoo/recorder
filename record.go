@@ -1,15 +1,12 @@
 package recorder
 
 import (
+	"C"
 	"fmt"
 	"reflect"
-	"syscall"
 	"unsafe"
 )
 
-// const BufSize = 1024 * 100 //100k
-
-// const BufSize = 1024 * 10 //10k
 const BufSize = 3200
 const BufNum = 4
 const SampleRate = 16000
@@ -30,7 +27,6 @@ type HandlerFunc func(data []byte, length int)
 func NewRecord(callback HandlerFunc) *Record {
 	r := Record{}
 	r.handlerFunc = callback
-	r.window()
 	return &r
 }
 
@@ -44,17 +40,6 @@ func (r *Record) OpenDevice() error {
 	fmx.NAvgBytesPerSec = uint32(fmx.WBitsPerSample * fmx.NBlockAlign)
 	fmx.CbSize = 0
 
-	ret := WaveInOpen(&r.waveIn, WAVE_MAPPER, &fmx, r.hwnd, uintptr(0), CALLBACK_WINDOW)
-	// ret := WaveInOpen(&r.waveIn, WAVE_MAPPER, &fmx, uintptr(r.event.h), CALLBACK_EVENT)
-	// ret := WaveInOpenFunction(&r.waveIn, WAVE_MAPPER, &fmx, r.CallBack, CALLBACK_FUNCTION)
-	if ret != 0 {
-		fmt.Println("ret: ", ret)
-		r.release()
-		return Error_OpenDevice
-	}
-
-	// prepare wave header
-
 	r.waveHdrs = [4]WaveHdr{}
 	r.buffers = [4][BufSize]byte{}
 	for i := 0; i < BufNum; i++ {
@@ -63,21 +48,29 @@ func (r *Record) OpenDevice() error {
 		r.waveHdrs[i].LpData = uintptr(unsafe.Pointer(&r.buffers[i][0]))
 		r.waveHdrs[i].DwBufferLength = BufSize
 		r.waveHdrs[i].DwLoops = 1
+	}
 
+	ret := WaveInOpenFunction(&r.waveIn, WAVE_MAPPER, &fmx, r.waveInProc, CALLBACK_FUNCTION)
+	if ret != 0 {
+		fmt.Println("WaveInOpenFunction failed: ", ret)
+		r.release()
+		return Error_OpenDevice
+	}
+
+	// prepare wave header
+	for i := 0; i < BufNum; i++ {
 		ret = WaveInPrepareHeader(r.waveIn, &r.waveHdrs[i], unsafe.Sizeof(r.waveHdrs[i]))
 		if ret != 0 {
-			fmt.Println("WaveInAddBuffer ret: ", ret)
+			fmt.Println("WaveInAddBuffer failed: ", ret)
 			r.release()
 			return Error_AddBuffer
 		}
 		ret = WaveInAddBuffer(r.waveIn, &r.waveHdrs[i], unsafe.Sizeof(r.waveHdrs[i]))
 		if ret != 0 {
-			fmt.Println("WaveInAddBuffer ret: ", ret)
+			fmt.Println("WaveInAddBuffer failed: ", ret)
 			r.release()
 			return Error_AddBuffer
 		}
-
-		// fmt.Printf("%+v\n", r.waveHdrs[i])
 	}
 
 	return nil
@@ -86,7 +79,7 @@ func (r *Record) OpenDevice() error {
 func (r *Record) CloseDevice() error {
 
 	r.closed = true
-	fmt.Println("close device")
+	// fmt.Println("close device")
 	if r.waveIn == 0 {
 		return Error_InvalidHandle
 	}
@@ -104,16 +97,6 @@ func (r *Record) CloseDevice() error {
 	return nil
 }
 
-func (r *Record) ProcessMsg() {
-	var msg Msg
-	for GetMessage(&msg, r.hwnd, 0, 0) > 0 && !r.stopped {
-		fmt.Printf("%x\n", msg.Message)
-		TranslateMessage(&msg)
-		DispatchMessage(&msg)
-	}
-}
-
-// must be executed on main thread
 func (r *Record) StartRecord() error {
 	if r.waveIn == 0 {
 		return Error_InvalidHandle
@@ -123,7 +106,6 @@ func (r *Record) StartRecord() error {
 		return Error_StartRecord
 	}
 	// fmt.Println("StartRecord")
-	r.ProcessMsg()
 	return nil
 }
 
@@ -136,55 +118,32 @@ func (r *Record) StopRecord() error {
 	if ret != 0 {
 		return Error_StopRecord
 	}
-	fmt.Println("StopRecord")
+	// fmt.Println("StopRecord")
 	return nil
 }
 
 func (r *Record) release() {
 	for _, waveHdr := range r.waveHdrs {
-		fmt.Println("release")
+		// fmt.Println("release")
 		WaveInUnprepareHeader(r.waveIn, &waveHdr, unsafe.Sizeof(WaveHdr{}))
 	}
 }
 
-func (r *Record) window() {
-	ins := GetModuleHandle(nil)
-	pc, _ := syscall.UTF16PtrFromString("TESTWIN")
-	pt, _ := syscall.UTF16PtrFromString("TEST")
-
-	wc := WNDCLASSEX{
-		CbSize:        uint32(unsafe.Sizeof(WNDCLASSEX{})), //必須
-		LpfnWndProc:   syscall.NewCallback(r.windowProc),   //必須
-		LpszClassName: pc,
-	}
-	if int(RegisterClassEx(&wc)) == 0 {
-		return
-	}
-	r.hwnd = uintptr(CreateWindowEx(
-		WS_EX_TRANSPARENT,
-		pc,
-		pt,
-		WS_POPUP,
-		0, 0,
-		0, 0,
-		0, 0, ins, nil,
-	))
-}
-
-func (r *Record) windowProc(hWnd uintptr, msg uint32, wParam uintptr, lParam uintptr) uintptr {
+func (r *Record) waveInProc(hWnd uintptr, msg uint32, instance uint32, wParam uintptr, lParam uintptr) int {
+	// fmt.Printf("waveInProc 0x%08x \n", msg)
 	switch msg {
 	case WIM_OPEN:
-		// fmt.Println("windowProc open")
+		// fmt.Println("waveInProc open")
 	case WIM_CLOSE:
-		// fmt.Println("windowProc close")
+		// fmt.Println("waveInProc close")
 	case WIM_DATA:
-		// fmt.Println("windowProc data")
+		// fmt.Println("waveInProc data")
 		if r.stopped || r.closed {
 			return 0
 		}
 
 		for i := 0; i < BufNum; i++ {
-			if lParam == uintptr(unsafe.Pointer(&r.waveHdrs[i])) {
+			if wParam == uintptr(unsafe.Pointer(&r.waveHdrs[i])) {
 				y := reflect.SliceHeader{
 					Len:  int(r.waveHdrs[i].DwBytesRecorded),
 					Cap:  int(r.waveHdrs[i].DwBytesRecorded),
@@ -192,9 +151,15 @@ func (r *Record) windowProc(hWnd uintptr, msg uint32, wParam uintptr, lParam uin
 				}
 				data := *(*[]byte)(unsafe.Pointer(&y))
 				r.handlerFunc(data, int(r.waveHdrs[i].DwBytesRecorded))
-				ret := WaveInPrepareHeader(r.waveIn, &r.waveHdrs[i], unsafe.Sizeof(r.waveHdrs[i]))
+				ret := WaveInUnprepareHeader(r.waveIn, &r.waveHdrs[i], unsafe.Sizeof(r.waveHdrs[i]))
 				if ret != 0 {
-					fmt.Println("WaveInPrepareHeader ret: ", ret)
+					fmt.Println("WaveInUnprepareHeader failed: ", ret)
+					r.release()
+					return 1
+				}
+				ret = WaveInPrepareHeader(r.waveIn, &r.waveHdrs[i], unsafe.Sizeof(r.waveHdrs[i]))
+				if ret != 0 {
+					fmt.Println("WaveInPrepareHeader failed: ", ret)
 					r.release()
 					return 1
 				}
@@ -206,9 +171,6 @@ func (r *Record) windowProc(hWnd uintptr, msg uint32, wParam uintptr, lParam uin
 				}
 			}
 		}
-
-	default:
-		return DefWindowProc(hWnd, msg, wParam, lParam)
 	}
 	return 0
 }

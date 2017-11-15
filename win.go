@@ -1,6 +1,7 @@
 package recorder
 
 import (
+	"fmt"
 	"syscall"
 	"unsafe"
 )
@@ -54,6 +55,9 @@ var (
 
 	libkernel32     *syscall.LazyDLL
 	getModuleHandle *syscall.LazyProc
+	virtualAlloc    *syscall.LazyProc
+	createThread    *syscall.LazyProc
+	waitSingle      *syscall.LazyProc
 )
 
 func init() {
@@ -67,6 +71,9 @@ func init() {
 
 	libkernel32 = syscall.NewLazyDLL("kernel32.dll")
 	getModuleHandle = libkernel32.NewProc("GetModuleHandleW")
+	virtualAlloc = libkernel32.NewProc("VirtualAlloc")
+	createThread = libkernel32.NewProc("CreateThread")
+	waitSingle = libkernel32.NewProc("WaitForSingleObject")
 }
 
 func GetMessage(msg *Msg, hWnd uintptr, msgFilterMin, msgFilterMax uint32) uintptr {
@@ -123,3 +130,28 @@ func GetModuleHandle(lpModuleName *uint16) uintptr {
 	ret, _, _ := getModuleHandle.Call(uintptr(unsafe.Pointer(lpModuleName)))
 	return ret
 }
+
+func VirtualAlloc(lpModuleName *uint16) uintptr {
+	ret, _, _ := virtualAlloc.Call(uintptr(unsafe.Pointer(lpModuleName)))
+	return ret
+}
+
+// HANDLE CreateThread(
+// 	LPSECURITY_ATTRIBUTES lpThreadAttributes, 　　　　　// pointer to security attributes
+// 	DWORD dwStackSize,　　　　　　　　　　　　　　　　　　// initial thread stack size
+// 	LPTHREAD_START_ROUTINE lpStartAddress, 　　　　　　// pointer to thread function
+// 	LPVOID lpParameter,　　　　　　　　　　　　　　　　　　　// argument for new thread
+// 	DWORD dwCreationFlags,　　　　　　　　　　　　　　　　// creation flags
+// 	LPDWORD lpThreadId　　　　　　　　　　　　　　　　　　// pointer to receive thread ID
+//   );
+func CreateThread(threadFunction interface{}, soundIn uintptr, threadId *uintptr) uintptr {
+	ret, _, _ := createThread.Call(0, 0, syscall.NewCallback(threadFunction), soundIn, 0, uintptr(unsafe.Pointer(threadId)))
+	fmt.Println(threadId)
+	fmt.Println(ret)
+	return ret
+}
+
+// func WaitSingle() uintptr {
+// 	ret, _, _ := waitSingle.Call(uintptr(unsafe.Pointer(lpModuleName)))
+// 	return ret
+// }
