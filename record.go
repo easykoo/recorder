@@ -9,23 +9,28 @@ import (
 
 const BufSize = 3200
 const BufNum = 4
-const SampleRate = 16000
 
 type Record struct {
-	hwnd        uintptr
-	stopped     bool
-	closed      bool
-	waveIn      uintptr
-	buffers     [BufNum][BufSize]byte
-	waveHdrs    [BufNum]WaveHdr
-	handlerFunc HandlerFunc
-	stopChan    chan int
+	hwnd          uintptr
+	stopped       bool
+	closed        bool
+	waveIn        uintptr
+	buffers       [BufNum][BufSize]byte
+	waveHdrs      [BufNum]WaveHdr
+	handlerFunc   HandlerFunc
+	stopChan      chan int
+	sampleRate    int
+	channel       int
+	bitsPerSample int
 }
 
 type HandlerFunc func(data []byte, length int)
 
-func NewRecord(callback HandlerFunc) *Record {
+func NewRecord(sampleRate, channel, bitsPerSample int, callback HandlerFunc) *Record {
 	r := Record{}
+	r.sampleRate = sampleRate
+	r.channel = channel
+	r.bitsPerSample = bitsPerSample
 	r.handlerFunc = callback
 	return &r
 }
@@ -33,9 +38,9 @@ func NewRecord(callback HandlerFunc) *Record {
 func (r *Record) OpenDevice() error {
 	fmx := WaveFormatX{}
 	fmx.WFormatTag = WAVE_FORMAT_PCM
-	fmx.NChannels = 1
-	fmx.NSamplesPerSec = SampleRate
-	fmx.WBitsPerSample = 16
+	fmx.NChannels = uint16(r.channel)
+	fmx.NSamplesPerSec = uint32(r.sampleRate)
+	fmx.WBitsPerSample = uint16(r.bitsPerSample)
 	fmx.NBlockAlign = fmx.WBitsPerSample * fmx.NChannels / 8
 	fmx.NAvgBytesPerSec = uint32(fmx.WBitsPerSample * fmx.NBlockAlign)
 	fmx.CbSize = 0

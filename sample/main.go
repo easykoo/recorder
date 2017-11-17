@@ -16,7 +16,7 @@ func DataProc(data []byte, size int) {
 }
 
 func main() {
-	r := recorder.NewRecord(DataProc)
+	r := recorder.NewRecord(16000, 2, 16, DataProc)
 	r.OpenDevice()
 	defer r.CloseDevice()
 	r.StartRecord()
