@@ -7,8 +7,8 @@ import (
 	"unsafe"
 )
 
-const BufSize = 3200
-const BufNum = 4
+const BufSize = 2048
+const BufNum = 10
 
 type Record struct {
 	hwnd          uintptr
@@ -45,8 +45,8 @@ func (r *Record) OpenDevice() error {
 	fmx.NAvgBytesPerSec = uint32(fmx.WBitsPerSample * fmx.NBlockAlign)
 	fmx.CbSize = 0
 
-	r.waveHdrs = [4]WaveHdr{}
-	r.buffers = [4][BufSize]byte{}
+	r.waveHdrs = [BufNum]WaveHdr{}
+	r.buffers = [BufNum][BufSize]byte{}
 	for i := 0; i < BufNum; i++ {
 		r.buffers[i] = [BufSize]byte{}
 		r.waveHdrs[i] = WaveHdr{}
