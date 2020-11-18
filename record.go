@@ -106,6 +106,7 @@ func (r *Record) StartRecord() error {
 	if r.waveIn == 0 {
 		return Error_InvalidHandle
 	}
+	r.stopped = false
 	ret := WaveInStart(r.waveIn)
 	if ret != 0 {
 		return Error_StartRecord
